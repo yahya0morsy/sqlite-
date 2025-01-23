@@ -25,7 +25,7 @@ const allowedOrigins = ['https://bonus-front.vercel.app/#/login', 'http://localh
 const corsOptions = {
   origin: allowedOrigins, // Allow requests from these origins
   methods: 'GET,POST,PUT,DELETE', // Allow only specific HTTP methods
-  allowedHeaders: 'Content-Type,Authorization', // Allow only specific headers
+  //allowedHeaders: 'Content-Type,Authorization', // Allow only specific headers
 };
 
 // Enable CORS with custom options
