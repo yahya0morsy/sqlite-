@@ -19,7 +19,7 @@ mongoose
 
 
 // List of allowed origins
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:3000', 'https://bonus-front.vercel.app/'];
+const allowedOrigins = ['https://bonus-front.vercel.app/#/login', 'http://localhost:5173', 'https://bonus-front.vercel.app/'];
 
 // Custom CORS configuration
 const corsOptions = {
