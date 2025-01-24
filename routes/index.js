@@ -5,7 +5,7 @@ const User = require('../models/User.js');
 const Session = require('../models/sessions.js');
 const Account = require('../models/accounts.js');
 const Master_key = require('../models/masterkey.js'); // Ensure this is properly exported
-
+const Message = require('../models/message.js'); // Import the Message model
 // Middleware for input validation
 const validateRequest = (req, res, next) => {
   if (!req.body) {
@@ -130,15 +130,16 @@ router.post('/login', validateRequest, async (req, res) => {
   }
 });
 
-// Update balance (requires master key)
 router.post('/users/update-balance', validateRequest, async (req, res) => {
   try {
     const { masterKey, username, phoneNumber, amount, action } = req.body;
 
+    // Validate the master key
     if (masterKey !== Master_key) {
       return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
     }
 
+    // Find the account by username or phone number
     const account = await Account.findOne({
       $or: [{ username }, { phoneNumber }],
     });
@@ -147,6 +148,10 @@ router.post('/users/update-balance', validateRequest, async (req, res) => {
       return res.status(404).send({ error: 'Account not found' });
     }
 
+    // Store the old balance for the message
+    const oldBalance = account.accountBalance;
+
+    // Update the balance based on the action
     if (action === 'add') {
       account.accountBalance += amount;
     } else if (action === 'subtract') {
@@ -158,14 +163,25 @@ router.post('/users/update-balance', validateRequest, async (req, res) => {
       return res.status(400).send({ error: 'Invalid action' });
     }
 
+    // Save the updated account balance
     await account.save();
+
+    // Create a message for the user
+    const message = new Message({
+      username: account.username,
+      content: `Your balance was updated from ${oldBalance} to ${account.accountBalance} by an admin.`,
+      date: new Date(),
+      time: new Date().toLocaleTimeString(),
+    });
+    await message.save();
+
+    // Return success response
     res.send({ accountBalance: account.accountBalance });
   } catch (error) {
     console.error('Error updating balance:', error);
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-
 // Fetch account balance
 // Fetch account balance and user grade
 // Fetch account balance and user grade
@@ -195,6 +211,9 @@ router.post('/users/balance', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
+
+// ... (other routes remain unchanged)
+
 router.post('/users/transfer-balance', validateRequest, async (req, res) => {
   try {
     const { senderKey, recipientUsername, amount } = req.body;
@@ -245,6 +264,24 @@ router.post('/users/transfer-balance', validateRequest, async (req, res) => {
     await senderAccount.save();
     await recipientAccount.save();
 
+    // Create a message for the sender
+    const senderMessage = new Message({
+      username: senderSession.username,
+      content: `You sent ${amount} to ${recipientAccount.username}.`,
+      date: new Date(),
+      time: new Date().toLocaleTimeString(),
+    });
+    await senderMessage.save();
+
+    // Create a message for the recipient
+    const recipientMessage = new Message({
+      username: recipientAccount.username,
+      content: `You received ${amount} from ${senderSession.username}.`,
+      date: new Date(),
+      time: new Date().toLocaleTimeString(),
+    });
+    await recipientMessage.save();
+
     // Return success response
     res.send({
       message: 'Transfer successful',
@@ -256,13 +293,15 @@ router.post('/users/transfer-balance', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
+
+// ... (other routes remain unchanged)
+
+module.exports = router;
 // Update user grade (requires master key)
 // Update user grade (requires master key)
 router.post('/users/update-grade', validateRequest, async (req, res) => {
   try {
     const { masterKey, username, phoneNumber, grade } = req.body;
-
-    console.log('Request Body:', req.body); // Debugging log
 
     // Validate the master key
     if (masterKey !== Master_key) {
@@ -278,16 +317,26 @@ router.post('/users/update-grade', validateRequest, async (req, res) => {
       return res.status(404).send({ error: 'Account not found' });
     }
 
+    // Store the old grade for the message
+    const oldGrade = account.grade || 'No grade assigned';
+
     // Update the grade
     account.grade = grade;
     await account.save();
 
-    console.log('Updated Account:', account); // Debugging log
+    // Create a message for the user
+    const message = new Message({
+      username: account.username,
+      content: `Your grade was updated from ${oldGrade} to ${grade} by an admin.`,
+      date: new Date(),
+      time: new Date().toLocaleTimeString(),
+    });
+    await message.save();
 
     // Return success response
     res.send({ message: 'Grade updated successfully', account });
   } catch (error) {
-    console.error('Error updating grade:', error); // Debugging log
+    console.error('Error updating grade:', error);
     res.status(500).send({ error: 'Internal server error' });
   }
 });
@@ -410,5 +459,26 @@ router.post('/user-data', async (req, res) => {
   }
 });
 
+router.post('/users/messages', validateRequest, async (req, res) => {
+  try {
+    const { key } = req.body; // Session key to identify the user
 
+    // Validate the session key
+    const session = await Session.findOne({ key });
+    if (!session) {
+      return res.status(401).send({ error: 'Invalid session key' });
+    }
+
+    // Fetch the latest 10 messages for the user
+    const messages = await Message.find({ username: session.username })
+      .sort({ date: -1, time: -1 }) // Sort by date and time in descending order
+      .limit(10); // Limit to 10 messages
+
+    // Return the messages
+    res.send({ messages });
+  } catch (error) {
+    console.error('Error fetching user messages:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
 module.exports = router;
