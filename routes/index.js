@@ -45,6 +45,11 @@ router.post('/users', validateRequest, async (req, res) => {
       return res.status(400).send({ error: 'Password must be at least 5 characters' });
     }
 
+    // Validate phoneNumber to ensure it contains only numbers
+    if (!/^\d+$/.test(phoneNumber)) {
+      return res.status(400).send({ error: 'Phone number must contain only numbers' });
+    }
+
     // Check if the username already exists
     const existingUserByUsername = await User.findOne({ username });
     if (existingUserByUsername) {
