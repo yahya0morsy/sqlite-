@@ -169,7 +169,7 @@ router.post('/users/update-balance', validateRequest, async (req, res) => {
     // Create a message for the user
     const message = new Message({
       username: account.username,
-      content: `Your balance was updated from ${oldBalance} to ${account.accountBalance} by an admin.`,
+      content: `Your balance was updated from ${oldBalance} to ${account.accountBalance} by an moataz.`,
       date: new Date(),
       time: new Date().toLocaleTimeString(),
     });
@@ -327,7 +327,7 @@ router.post('/users/update-grade', validateRequest, async (req, res) => {
     // Create a message for the user
     const message = new Message({
       username: account.username,
-      content: `Your grade was updated from ${oldGrade} to ${grade} by an admin.`,
+      content: `Your grade was updated from ${oldGrade} to ${grade} by an moataz.`,
       date: new Date(),
       time: new Date().toLocaleTimeString(),
     });
