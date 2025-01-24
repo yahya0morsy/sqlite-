@@ -12,10 +12,10 @@ const sessionSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
-  //createdAt: {
-    //type: Date,
-    //default: Date.now,
-    //index: { expires: '2d' }}
+  createdAt: {
+    type: Date,
+    default: Date.now,
+    index: { expires: '2d' }}
 });
 
 // Create the Session model
