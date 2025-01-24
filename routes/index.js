@@ -195,44 +195,57 @@ router.post('/users/balance', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-// Transfer balance between users
 router.post('/users/transfer-balance', validateRequest, async (req, res) => {
   try {
     const { senderKey, recipientUsername, amount } = req.body;
 
+    // Validate that the amount is a positive integer
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return res.status(400).send({ error: 'Amount must be a positive integer' });
+    }
+
+    // Validate sender session
     const senderSession = await Session.findOne({ key: senderKey });
     if (!senderSession) {
       return res.status(401).send({ error: 'Invalid session key' });
     }
 
+    // Validate sender account
     const senderAccount = await Account.findOne({ username: senderSession.username });
     if (!senderAccount) {
       return res.status(404).send({ error: 'Sender account not found' });
     }
 
+    // Check if sender has sufficient balance
     if (senderAccount.accountBalance < amount) {
       return res.status(400).send({ error: 'Insufficient balance' });
     }
 
+    // Find recipient account by username or phone number
     let recipientAccount = await Account.findOne({ username: recipientUsername });
     const recipientAccount2 = await Account.findOne({ phoneNumber: recipientUsername });
+
+    // If recipient account is not found by username, check by phone number
     if (!recipientAccount) {
-      if(!recipientAccount2){
+      if (!recipientAccount2) {
         return res.status(404).send({ error: 'Recipient account not found' });
       }
     }
-    if(recipientAccount2){
-      recipientAccount = recipientAccount2
+
+    // Use the recipient account found by phone number if username lookup fails
+    if (recipientAccount2) {
+      recipientAccount = recipientAccount2;
     }
-    if (amount<=0) {
-      return res.status(404).send({ error: 'wrong value' });
-    }
+
+    // Perform the balance transfer
     senderAccount.accountBalance -= amount;
     recipientAccount.accountBalance += amount;
 
+    // Save the updated account balances
     await senderAccount.save();
     await recipientAccount.save();
 
+    // Return success response
     res.send({
       message: 'Transfer successful',
       senderBalance: senderAccount.accountBalance,
