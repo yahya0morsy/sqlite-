@@ -19,24 +19,45 @@ router.get('/', (req, res) => {
   res.render('index', { title: 'Express' });
 });
 
+
+
 // Create a new user
 router.post('/users', validateRequest, async (req, res) => {
   try {
     const { displayName, username, password, phoneNumber } = req.body;
 
-    if (!username || !password || !phoneNumber) {
-      return res.status(400).send({ error: 'Missing required fields' });
+    // Check if all required fields are provided
+    if (!displayName || !username || !password || !phoneNumber) {
+      return res.status(400).send({ error: 'All fields are required: displayName, username, password, phoneNumber' });
     }
 
+    // Check if the username already exists
+    const existingUserByUsername = await User.findOne({ username });
+    if (existingUserByUsername) {
+      return res.status(400).send({ error: 'Username already exists' });
+    }
+
+    // Check if the phone number already exists
+    const existingUserByPhoneNumber = await User.findOne({ phoneNumber });
+    if (existingUserByPhoneNumber) {
+      return res.status(400).send({ error: 'Phone number already exists' });
+    }
+
+    // Hash the password
     const hashedPassword = bcrypt.hashSync(password, 10);
 
+    // Create and save the new user
     const user = new User({ displayName, username, password: hashedPassword, phoneNumber });
     await user.save();
 
+    // Create and save the associated account
     const account = new Account({ username, phoneNumber, accountBalance: 0 });
     await account.save();
 
-    res.status(201).send({ user });
+    // Return the created user (excluding the password for security)
+    const userResponse = { ...user.toObject() };
+    delete userResponse.password; // Remove the password from the response
+    res.status(201).send({ user: userResponse });
   } catch (error) {
     console.error('Error creating user:', error);
     res.status(500).send({ error: 'Internal server error' });
