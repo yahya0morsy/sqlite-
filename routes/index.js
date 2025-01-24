@@ -21,7 +21,6 @@ router.get('/', (req, res) => {
 
 
 
-// Create a new user
 router.post('/users', validateRequest, async (req, res) => {
   try {
     const { displayName, username, password, phoneNumber } = req.body;
@@ -29,6 +28,21 @@ router.post('/users', validateRequest, async (req, res) => {
     // Check if all required fields are provided
     if (!displayName || !username || !password || !phoneNumber) {
       return res.status(400).send({ error: 'All fields are required: displayName, username, password, phoneNumber' });
+    }
+
+    // Validate displayName length (must be at least 3 characters)
+    if (displayName.length < 3) {
+      return res.status(400).send({ error: 'Display name must be at least 3 characters' });
+    }
+
+    // Validate username length (must be at least 4 characters)
+    if (username.length < 4) {
+      return res.status(400).send({ error: 'Username must be at least 4 characters' });
+    }
+
+    // Validate password length (must be at least 5 characters)
+    if (password.length < 5) {
+      return res.status(400).send({ error: 'Password must be at least 5 characters' });
     }
 
     // Check if the username already exists
@@ -63,7 +77,6 @@ router.post('/users', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-
 // Get all users
 router.get('/users', async (req, res) => {
   try {
