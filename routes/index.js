@@ -571,6 +571,84 @@ router.post('/users/admin/update-credentials', validateRequest, async (req, res)
   }
 });
 
+// Update display name by master key
+router.post('/users/admin/update-display-name', validateRequest, async (req, res) => {
+  try {
+    const { masterKey, username, newDisplayName } = req.body;
+
+    // Validate the master key
+    if (masterKey !== Master_key) {
+      return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
+    }
+
+    // Find the user by username
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(404).send({ error: 'User not found' });
+    }
+
+    // Validate the new display name
+    if (!newDisplayName || newDisplayName.length < 3) {
+      return res.status(400).send({ error: 'Display name must be at least 3 characters' });
+    }
+
+    // Update the display name
+    user.displayName = newDisplayName;
+    await user.save();
+
+    // Return the updated user data (excluding password)
+    const userResponse = { ...user.toObject() };
+    delete userResponse.password; // Remove the password field
+    res.send({ message: 'Display name updated successfully', user: userResponse });
+  } catch (error) {
+    console.error('Error updating display name:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+// Export the router
+// Add this route to your existing router
+
+// Update phone number by master key
+router.post('/users/admin/update-phone-number', validateRequest, async (req, res) => {
+  try {
+    const { masterKey, username, newPhoneNumber } = req.body;
+
+    // Validate the master key
+    if (masterKey !== Master_key) {
+      return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
+    }
+
+    // Find the user by username
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(404).send({ error: 'User not found' });
+    }
+
+    // Validate the new phone number
+    if (!newPhoneNumber || !/^\d+$/.test(newPhoneNumber)) {
+      return res.status(400).send({ error: 'Phone number must contain only numbers' });
+    }
+
+    // Check if the new phone number already exists
+    const existingUserByPhoneNumber = await User.findOne({ phoneNumber: newPhoneNumber });
+    if (existingUserByPhoneNumber) {
+      return res.status(400).send({ error: 'Phone number already exists' });
+    }
+
+    // Update the phone number
+    user.phoneNumber = newPhoneNumber;
+    await user.save();
+
+    // Return the updated user data (excluding password)
+    const userResponse = { ...user.toObject() };
+    delete userResponse.password; // Remove the password field
+    res.send({ message: 'Phone number updated successfully', user: userResponse });
+  } catch (error) {
+    console.error('Error updating phone number:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
 // Export the router
 
 module.exports = router;
