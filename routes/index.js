@@ -213,7 +213,6 @@ router.post('/users/balance', validateRequest, async (req, res) => {
 });
 
 // ... (other routes remain unchanged)
-
 router.post('/users/transfer-balance', validateRequest, async (req, res) => {
   try {
     const { senderKey, recipientUsername, amount } = req.body;
@@ -256,6 +255,14 @@ router.post('/users/transfer-balance', validateRequest, async (req, res) => {
       recipientAccount = recipientAccount2;
     }
 
+    // Check if sender is trying to transfer to themselves (via username or phone number)
+    if (
+      senderSession.username === recipientAccount.username || // Check username
+      senderAccount.phoneNumber === recipientAccount.phoneNumber // Check phone number
+    ) {
+      return res.status(400).send({ error: 'You cannot transfer money to yourself' });
+    }
+
     // Perform the balance transfer
     senderAccount.accountBalance -= amount;
     recipientAccount.accountBalance += amount;
@@ -293,10 +300,8 @@ router.post('/users/transfer-balance', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-
 // ... (other routes remain unchanged)
 
-module.exports = router;
 // Update user grade (requires master key)
 // Update user grade (requires master key)
 router.post('/users/update-grade', validateRequest, async (req, res) => {
