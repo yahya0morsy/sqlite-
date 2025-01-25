@@ -6,6 +6,7 @@ const Session = require('../models/sessions.js');
 const Account = require('../models/accounts.js');
 const Master_key = require('../models/masterkey.js'); // Ensure this is properly exported
 const Message = require('../models/message.js'); // Import the Message model
+
 // Middleware for input validation
 const validateRequest = (req, res, next) => {
   if (!req.body) {
@@ -19,8 +20,7 @@ router.get('/', (req, res) => {
   res.render('index', { title: 'Express' });
 });
 
-
-
+// Create a new user
 router.post('/users', validateRequest, async (req, res) => {
   try {
     const { displayName, username, password, phoneNumber } = req.body;
@@ -30,13 +30,21 @@ router.post('/users', validateRequest, async (req, res) => {
       return res.status(400).send({ error: 'All fields are required: displayName, username, password, phoneNumber' });
     }
 
+    // Trim leading and trailing spaces from the username
+    const trimmedUsername = username.trim();
+
+    // Check if the trimmed username contains any spaces in the middle
+    if (trimmedUsername.includes(' ')) {
+      return res.status(400).send({ error: 'Username cannot contain spaces' });
+    }
+
     // Validate displayName length (must be at least 3 characters)
     if (displayName.length < 3) {
       return res.status(400).send({ error: 'Display name must be at least 3 characters' });
     }
 
     // Validate username length (must be at least 4 characters)
-    if (username.length < 4) {
+    if (trimmedUsername.length < 4) {
       return res.status(400).send({ error: 'Username must be at least 4 characters' });
     }
 
@@ -51,7 +59,7 @@ router.post('/users', validateRequest, async (req, res) => {
     }
 
     // Check if the username already exists
-    const existingUserByUsername = await User.findOne({ username });
+    const existingUserByUsername = await User.findOne({ username: trimmedUsername });
     if (existingUserByUsername) {
       return res.status(400).send({ error: 'Username already exists' });
     }
@@ -66,11 +74,11 @@ router.post('/users', validateRequest, async (req, res) => {
     const hashedPassword = bcrypt.hashSync(password, 10);
 
     // Create and save the new user
-    const user = new User({ displayName, username, password: hashedPassword, phoneNumber });
+    const user = new User({ displayName, username: trimmedUsername, password: hashedPassword, phoneNumber });
     await user.save();
 
     // Create and save the associated account
-    const account = new Account({ username, phoneNumber, accountBalance: 0 });
+    const account = new Account({ username: trimmedUsername, phoneNumber, accountBalance: 0 });
     await account.save();
 
     // Return the created user (excluding the password for security)
@@ -82,6 +90,7 @@ router.post('/users', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
+
 // Get all users
 router.get('/users', async (req, res) => {
   try {
@@ -102,8 +111,11 @@ router.post('/login', validateRequest, async (req, res) => {
       return res.status(400).send({ error: 'Username or phone number is required' });
     }
 
+    // Trim the username if provided
+    const trimmedUsername = username ? username.trim() : null;
+
     const user = await User.findOne({
-      $or: [{ username }, { phoneNumber }],
+      $or: [{ username: trimmedUsername }, { phoneNumber }],
     });
 
     if (!user) {
@@ -130,6 +142,7 @@ router.post('/login', validateRequest, async (req, res) => {
   }
 });
 
+// Update user balance
 router.post('/users/update-balance', validateRequest, async (req, res) => {
   try {
     const { masterKey, username, phoneNumber, amount, action } = req.body;
@@ -139,9 +152,12 @@ router.post('/users/update-balance', validateRequest, async (req, res) => {
       return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
     }
 
+    // Trim the username if provided
+    const trimmedUsername = username ? username.trim() : null;
+
     // Find the account by username or phone number
     const account = await Account.findOne({
-      $or: [{ username }, { phoneNumber }],
+      $or: [{ username: trimmedUsername }, { phoneNumber }],
     });
 
     if (!account) {
@@ -182,8 +198,7 @@ router.post('/users/update-balance', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-// Fetch account balance
-// Fetch account balance and user grade
+
 // Fetch account balance and user grade
 router.post('/users/balance', validateRequest, async (req, res) => {
   try {
@@ -212,7 +227,7 @@ router.post('/users/balance', validateRequest, async (req, res) => {
   }
 });
 
-// ... (other routes remain unchanged)
+// Transfer balance between users
 router.post('/users/transfer-balance', validateRequest, async (req, res) => {
   try {
     const { senderKey, recipientUsername, amount } = req.body;
@@ -239,9 +254,12 @@ router.post('/users/transfer-balance', validateRequest, async (req, res) => {
       return res.status(400).send({ error: 'Insufficient balance' });
     }
 
+    // Trim the recipient username
+    const trimmedRecipientUsername = recipientUsername.trim();
+
     // Find recipient account by username or phone number
-    let recipientAccount = await Account.findOne({ username: recipientUsername });
-    const recipientAccount2 = await Account.findOne({ phoneNumber: recipientUsername });
+    let recipientAccount = await Account.findOne({ username: trimmedRecipientUsername });
+    const recipientAccount2 = await Account.findOne({ phoneNumber: trimmedRecipientUsername });
 
     // If recipient account is not found by username, check by phone number
     if (!recipientAccount) {
@@ -300,9 +318,7 @@ router.post('/users/transfer-balance', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-// ... (other routes remain unchanged)
 
-// Update user grade (requires master key)
 // Update user grade (requires master key)
 router.post('/users/update-grade', validateRequest, async (req, res) => {
   try {
@@ -313,9 +329,12 @@ router.post('/users/update-grade', validateRequest, async (req, res) => {
       return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
     }
 
+    // Trim the username if provided
+    const trimmedUsername = username ? username.trim() : null;
+
     // Find the account by username or phone number
     const account = await Account.findOne({
-      $or: [{ username }, { phoneNumber }],
+      $or: [{ username: trimmedUsername }, { phoneNumber }],
     });
 
     if (!account) {
@@ -345,6 +364,8 @@ router.post('/users/update-grade', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
+
+// View user balance (requires master key)
 router.post('/users/view-balance', async (req, res) => {
   try {
     const { masterKey, username, phoneNumber } = req.body;
@@ -354,9 +375,12 @@ router.post('/users/view-balance', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized: Invalid master key' });
     }
 
+    // Trim the username if provided
+    const trimmedUsername = username ? username.trim() : null;
+
     // Find account by username or phone number
     const account = await Account.findOne({
-      $or: [{ username }, { phoneNumber }],
+      $or: [{ username: trimmedUsername }, { phoneNumber }],
     });
 
     if (!account) {
@@ -374,12 +398,17 @@ router.post('/users/view-balance', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Update user password
 router.post('/users/update-password', async (req, res) => {
   try {
     const { username, currentPassword, newPassword } = req.body;
 
+    // Trim the username
+    const trimmedUsername = username.trim();
+
     // Find the user by username
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ username: trimmedUsername });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -401,6 +430,8 @@ router.post('/users/update-password', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Admin update user password
 router.post('/users/admin/update-password', async (req, res) => {
   try {
     const { masterKey, username, newPassword } = req.body;
@@ -410,8 +441,11 @@ router.post('/users/admin/update-password', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized: Invalid master key' });
     }
 
+    // Trim the username
+    const trimmedUsername = username.trim();
+
     // Find the user by username
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ username: trimmedUsername });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -428,8 +462,7 @@ router.post('/users/admin/update-password', async (req, res) => {
   }
 });
 
-
-// Endpoint to get user data using session key
+// Get user data using session key
 router.post('/user-data', async (req, res) => {
   const { sessionKey } = req.body;
 
@@ -464,6 +497,7 @@ router.post('/user-data', async (req, res) => {
   }
 });
 
+// Fetch user messages
 router.post('/users/messages', validateRequest, async (req, res) => {
   try {
     const { key } = req.body; // Session key to identify the user
@@ -486,7 +520,8 @@ router.post('/users/messages', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-// Add this route to your existing router
+
+// Validate session key
 router.post('/validate-session', validateRequest, async (req, res) => {
   try {
     const { key } = req.body;
@@ -506,7 +541,6 @@ router.post('/validate-session', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-// Add these routes to your existing router
 
 // Search for user full data (excluding password)
 router.post('/users/search', validateRequest, async (req, res) => {
@@ -518,9 +552,12 @@ router.post('/users/search', validateRequest, async (req, res) => {
       return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
     }
 
+    // Trim the username if provided
+    const trimmedUsername = username ? username.trim() : null;
+
     // Find the user by username or phone number
     const user = await User.findOne({
-      $or: [{ username }, { phoneNumber }],
+      $or: [{ username: trimmedUsername }, { phoneNumber }],
     });
 
     if (!user) {
@@ -537,7 +574,7 @@ router.post('/users/search', validateRequest, async (req, res) => {
   }
 });
 
-// Change username by master key
+// Admin update username
 router.post('/users/admin/update-credentials', validateRequest, async (req, res) => {
   try {
     const { masterKey, username, newUsername } = req.body;
@@ -547,20 +584,26 @@ router.post('/users/admin/update-credentials', validateRequest, async (req, res)
       return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
     }
 
+    // Trim the username
+    const trimmedUsername = username.trim();
+
     // Find the user by username
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ username: trimmedUsername });
     if (!user) {
       return res.status(404).send({ error: 'User not found' });
     }
 
     // Update username if provided
     if (newUsername) {
+      // Trim the new username
+      const trimmedNewUsername = newUsername.trim();
+
       // Check if the new username already exists
-      const existingUser = await User.findOne({ username: newUsername });
+      const existingUser = await User.findOne({ username: trimmedNewUsername });
       if (existingUser) {
         return res.status(400).send({ error: 'Username already exists' });
       }
-      user.username = newUsername;
+      user.username = trimmedNewUsername;
     }
 
     // Save the updated user
@@ -576,7 +619,7 @@ router.post('/users/admin/update-credentials', validateRequest, async (req, res)
   }
 });
 
-// Update display name by master key
+// Admin update display name
 router.post('/users/admin/update-display-name', validateRequest, async (req, res) => {
   try {
     const { masterKey, username, newDisplayName } = req.body;
@@ -586,8 +629,11 @@ router.post('/users/admin/update-display-name', validateRequest, async (req, res
       return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
     }
 
+    // Trim the username
+    const trimmedUsername = username.trim();
+
     // Find the user by username
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ username: trimmedUsername });
     if (!user) {
       return res.status(404).send({ error: 'User not found' });
     }
@@ -610,10 +656,8 @@ router.post('/users/admin/update-display-name', validateRequest, async (req, res
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-// Export the router
-// Add this route to your existing router
 
-// Update phone number by master key
+// Admin update phone number
 router.post('/users/admin/update-phone-number', validateRequest, async (req, res) => {
   try {
     const { masterKey, username, newPhoneNumber } = req.body;
@@ -623,8 +667,11 @@ router.post('/users/admin/update-phone-number', validateRequest, async (req, res
       return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
     }
 
+    // Trim the username
+    const trimmedUsername = username.trim();
+
     // Find the user by username
-    const user = await User.findOne({ username });
+    const user = await User.findOne({ username: trimmedUsername });
     if (!user) {
       return res.status(404).send({ error: 'User not found' });
     }
@@ -655,5 +702,4 @@ router.post('/users/admin/update-phone-number', validateRequest, async (req, res
 });
 
 // Export the router
-
 module.exports = router;
