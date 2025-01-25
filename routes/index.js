@@ -501,4 +501,76 @@ router.post('/validate-session', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
+// Add these routes to your existing router
+
+// Search for user full data (excluding password)
+router.post('/users/search', validateRequest, async (req, res) => {
+  try {
+    const { masterKey, username, phoneNumber } = req.body;
+
+    // Validate the master key
+    if (masterKey !== Master_key) {
+      return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
+    }
+
+    // Find the user by username or phone number
+    const user = await User.findOne({
+      $or: [{ username }, { phoneNumber }],
+    });
+
+    if (!user) {
+      return res.status(404).send({ error: 'User not found' });
+    }
+
+    // Return user data excluding the password
+    const userResponse = { ...user.toObject() };
+    delete userResponse.password; // Remove the password field
+    res.send({ user: userResponse });
+  } catch (error) {
+    console.error('Error searching for user:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+// Change username by master key
+router.post('/users/admin/update-credentials', validateRequest, async (req, res) => {
+  try {
+    const { masterKey, username, newUsername } = req.body;
+
+    // Validate the master key
+    if (masterKey !== Master_key) {
+      return res.status(401).send({ error: 'Unauthorized: Invalid master key' });
+    }
+
+    // Find the user by username
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(404).send({ error: 'User not found' });
+    }
+
+    // Update username if provided
+    if (newUsername) {
+      // Check if the new username already exists
+      const existingUser = await User.findOne({ username: newUsername });
+      if (existingUser) {
+        return res.status(400).send({ error: 'Username already exists' });
+      }
+      user.username = newUsername;
+    }
+
+    // Save the updated user
+    await user.save();
+
+    // Return the updated user data (excluding password)
+    const userResponse = { ...user.toObject() };
+    delete userResponse.password; // Remove the password field
+    res.send({ message: 'Username updated successfully', user: userResponse });
+  } catch (error) {
+    console.error('Error updating username:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
+
+// Export the router
+
 module.exports = router;
