@@ -481,4 +481,24 @@ router.post('/users/messages', validateRequest, async (req, res) => {
     res.status(500).send({ error: 'Internal server error' });
   }
 });
+// Add this route to your existing router
+router.post('/validate-session', validateRequest, async (req, res) => {
+  try {
+    const { key } = req.body;
+
+    // Check if the session key exists in the database
+    const session = await Session.findOne({ key });
+
+    if (session) {
+      // If the session key is valid, return a success response
+      res.status(200).send({ message: 'Session is valid', isValid: true });
+    } else {
+      // If the session key is invalid, return an error response
+      res.status(401).send({ message: 'Invalid session key', isValid: false });
+    }
+  } catch (error) {
+    console.error('Error validating session:', error);
+    res.status(500).send({ error: 'Internal server error' });
+  }
+});
 module.exports = router;
