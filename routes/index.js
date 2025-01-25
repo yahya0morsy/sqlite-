@@ -21,6 +21,8 @@ router.get('/', (req, res) => {
 });
 
 // Create a new user
+
+
 router.post('/users', validateRequest, async (req, res) => {
   try {
     const { displayName, username, password, phoneNumber } = req.body;
@@ -36,6 +38,11 @@ router.post('/users', validateRequest, async (req, res) => {
     // Check if the trimmed username contains any spaces in the middle
     if (trimmedUsername.includes(' ')) {
       return res.status(400).send({ error: 'Username cannot contain spaces' });
+    }
+
+    // Validate that the username contains only English letters, numbers, underscores, or hyphens
+    if (!/^[A-Za-z0-9_-]+$/.test(trimmedUsername)) {
+      return res.status(400).send({ error: 'Username can only contain English letters, numbers, underscores (_), or hyphens (-)' });
     }
 
     // Validate displayName length (must be at least 3 characters)
@@ -91,6 +98,7 @@ router.post('/users', validateRequest, async (req, res) => {
   }
 });
 
+module.exports = router;
 // Get all users
 router.get('/users', async (req, res) => {
   try {
