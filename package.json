@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node ./bin/www",
     "dev": "node --watch ./bin/www",
-        "predeploy": "npm run build",
+    "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
@@ -17,9 +17,12 @@
     "express": "^4.21.2",
     "http-errors": "~1.6.3",
     "mongoose": "^8.9.5",
-    "morgan": "~1.9.1"
+    "morgan": "~1.9.1",
+    "sequelize": "^6.37.5",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
-    "gh-pages": "^6.3.0"
+    "gh-pages": "^6.3.0",
+    "sequelize-cli": "^6.6.2"
   }
 }

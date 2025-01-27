@@ -1,12 +1,33 @@
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
-const User = require('../models/User.js');
-const Session = require('../models/sessions.js');
-const Account = require('../models/accounts.js');
-const Master_key = require('../models/masterkey.js'); // Ensure this is properly exported
-const Message = require('../models/message.js'); // Import the Message model
-
+const { User, Session, Account, Message } = require('../models/models.js'); // Import Sequelize models
+const Master_key = 'moataz220022'; // Replace with your actual master key
+const sequelize = require('../database.js');
+const { Sequelize, Op } = require('sequelize');
+// Start the background task to delete expired sessions
+setInterval(async () => {
+  try {
+    const now = new Date();
+    await Session.destroy({
+      where: {
+        expiresAt: {
+          [Op.lt]: now, // Delete sessions where expiresAt is less than the current time
+        },
+      },
+    });
+    console.log('Expired sessions deleted');
+  } catch (error) {
+    console.error('Error deleting expired sessions:', error);
+  }
+}, 60 * 60 * 1000); // Run every hour
+sequelize.sync({ alter: true }) // Update tables without dropping them
+  .then(() => {
+    console.log('Database & tables synced!');
+  })
+  .catch((err) => {
+    console.error('Error syncing database:', err);
+  });
 // Middleware for input validation
 const validateRequest = (req, res, next) => {
   if (!req.body) {
@@ -21,8 +42,6 @@ router.get('/', (req, res) => {
 });
 
 // Create a new user
-
-
 router.post('/users', validateRequest, async (req, res) => {
   try {
     const { displayName, username, password, phoneNumber } = req.body;
@@ -66,13 +85,13 @@ router.post('/users', validateRequest, async (req, res) => {
     }
 
     // Check if the username already exists
-    const existingUserByUsername = await User.findOne({ username: trimmedUsername });
+    const existingUserByUsername = await User.findOne({ where: { username: trimmedUsername } });
     if (existingUserByUsername) {
       return res.status(400).send({ error: 'Username already exists' });
     }
 
     // Check if the phone number already exists
-    const existingUserByPhoneNumber = await User.findOne({ phoneNumber });
+    const existingUserByPhoneNumber = await User.findOne({ where: { phoneNumber } });
     if (existingUserByPhoneNumber) {
       return res.status(400).send({ error: 'Phone number already exists' });
     }
@@ -81,15 +100,13 @@ router.post('/users', validateRequest, async (req, res) => {
     const hashedPassword = bcrypt.hashSync(password, 10);
 
     // Create and save the new user
-    const user = new User({ displayName, username: trimmedUsername, password: hashedPassword, phoneNumber });
-    await user.save();
+    const user = await User.create({ displayName, username: trimmedUsername, password: hashedPassword, phoneNumber });
 
     // Create and save the associated account
-    const account = new Account({ username: trimmedUsername, phoneNumber, accountBalance: 0 });
-    await account.save();
+    await Account.create({ username: trimmedUsername, phoneNumber, accountBalance: 0 });
 
     // Return the created user (excluding the password for security)
-    const userResponse = { ...user.toObject() };
+    const userResponse = { ...user.toJSON() };
     delete userResponse.password; // Remove the password from the response
     res.status(201).send({ user: userResponse });
   } catch (error) {
@@ -98,11 +115,10 @@ router.post('/users', validateRequest, async (req, res) => {
   }
 });
 
-module.exports = router;
 // Get all users
 router.get('/users', async (req, res) => {
   try {
-    const users = await User.find({}).limit(100); // Add pagination or limits
+    const users = await User.findAll({ limit: 100 }); // Add pagination or limits
     res.send(users);
   } catch (error) {
     console.error('Error fetching users:', error);
@@ -115,6 +131,7 @@ router.post('/login', validateRequest, async (req, res) => {
   try {
     const { username, phoneNumber, password } = req.body;
 
+    // Check if at least one of username or phoneNumber is provided
     if (!username && !phoneNumber) {
       return res.status(400).send({ error: 'Username or phone number is required' });
     }
@@ -122,34 +139,41 @@ router.post('/login', validateRequest, async (req, res) => {
     // Trim the username if provided
     const trimmedUsername = username ? username.trim() : null;
 
+    // Find the user by username or phone number
     const user = await User.findOne({
-      $or: [{ username: trimmedUsername }, { phoneNumber }],
+      where: {
+        [Op.or]: [
+          trimmedUsername ? { username: trimmedUsername } : null, // Search by username if provided
+          phoneNumber ? { phoneNumber } : null, // Search by phoneNumber if provided
+        ].filter(Boolean), // Remove null values from the array
+      },
     });
 
     if (!user) {
       return res.status(404).send({ error: 'User not found' });
     }
 
+    // Validate the password
     const isPasswordValid = bcrypt.compareSync(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).send({ error: 'Invalid password' });
     }
 
-    let session = await Session.findOne({ username: user.username });
+    // Find or create a session for the user
+    let session = await Session.findOne({ where: { username: user.username } });
 
     if (!session) {
       const sessionKey = Math.random().toString(36).substring(2, 15); // Generate random session key
-      session = new Session({ username: user.username, key: sessionKey });
-      await session.save();
+      session = await Session.create({ username: user.username, key: sessionKey });
     }
 
+    // Return the session key
     res.send({ key: session.key });
   } catch (error) {
     console.error('Error during login:', error);
     res.status(500).send({ error: 'Internal server error' });
   }
 });
-
 // Update user balance
 router.post('/users/update-balance', validateRequest, async (req, res) => {
   try {
@@ -165,7 +189,9 @@ router.post('/users/update-balance', validateRequest, async (req, res) => {
 
     // Find the account by username or phone number
     const account = await Account.findOne({
-      $or: [{ username: trimmedUsername }, { phoneNumber }],
+      where: {
+        [Sequelize.Op.or]: [{ username: trimmedUsername }, { phoneNumber }],
+      },
     });
 
     if (!account) {
@@ -191,13 +217,12 @@ router.post('/users/update-balance', validateRequest, async (req, res) => {
     await account.save();
 
     // Create a message for the user
-    const message = new Message({
+    await Message.create({
       username: account.username,
       content: `Your balance was updated from ${oldBalance} to ${account.accountBalance} by moataz.`,
       date: new Date(),
       time: new Date().toLocaleTimeString(),
     });
-    await message.save();
 
     // Return success response
     res.send({ accountBalance: account.accountBalance });
@@ -213,13 +238,13 @@ router.post('/users/balance', validateRequest, async (req, res) => {
     const { key } = req.body;
 
     // Validate the session key
-    const session = await Session.findOne({ key });
+    const session = await Session.findOne({ where: { key } });
     if (!session) {
       return res.status(401).send({ error: 'Invalid session key' });
     }
 
     // Fetch the account (including balance and grade)
-    const account = await Account.findOne({ username: session.username });
+    const account = await Account.findOne({ where: { username: session.username } });
     if (!account) {
       return res.status(404).send({ error: 'Account not found' });
     }
@@ -246,13 +271,13 @@ router.post('/users/transfer-balance', validateRequest, async (req, res) => {
     }
 
     // Validate sender session
-    const senderSession = await Session.findOne({ key: senderKey });
+    const senderSession = await Session.findOne({ where: { key: senderKey } });
     if (!senderSession) {
       return res.status(401).send({ error: 'Invalid session key' });
     }
 
     // Validate sender account
-    const senderAccount = await Account.findOne({ username: senderSession.username });
+    const senderAccount = await Account.findOne({ where: { username: senderSession.username } });
     if (!senderAccount) {
       return res.status(404).send({ error: 'Sender account not found' });
     }
@@ -266,8 +291,8 @@ router.post('/users/transfer-balance', validateRequest, async (req, res) => {
     const trimmedRecipientUsername = recipientUsername.trim();
 
     // Find recipient account by username or phone number
-    let recipientAccount = await Account.findOne({ username: trimmedRecipientUsername });
-    const recipientAccount2 = await Account.findOne({ phoneNumber: trimmedRecipientUsername });
+    let recipientAccount = await Account.findOne({ where: { username: trimmedRecipientUsername } });
+    const recipientAccount2 = await Account.findOne({ where: { phoneNumber: trimmedRecipientUsername } });
 
     // If recipient account is not found by username, check by phone number
     if (!recipientAccount) {
@@ -298,22 +323,20 @@ router.post('/users/transfer-balance', validateRequest, async (req, res) => {
     await recipientAccount.save();
 
     // Create a message for the sender
-    const senderMessage = new Message({
+    await Message.create({
       username: senderSession.username,
       content: `You sent ${amount} to ${recipientAccount.username}.`,
       date: new Date(),
       time: new Date().toLocaleTimeString(),
     });
-    await senderMessage.save();
 
     // Create a message for the recipient
-    const recipientMessage = new Message({
+    await Message.create({
       username: recipientAccount.username,
       content: `You received ${amount} from ${senderSession.username}.`,
       date: new Date(),
       time: new Date().toLocaleTimeString(),
     });
-    await recipientMessage.save();
 
     // Return success response
     res.send({
@@ -342,7 +365,9 @@ router.post('/users/update-grade', validateRequest, async (req, res) => {
 
     // Find the account by username or phone number
     const account = await Account.findOne({
-      $or: [{ username: trimmedUsername }, { phoneNumber }],
+      where: {
+        [Sequelize.Op.or]: [{ username: trimmedUsername }, { phoneNumber }],
+      },
     });
 
     if (!account) {
@@ -357,13 +382,12 @@ router.post('/users/update-grade', validateRequest, async (req, res) => {
     await account.save();
 
     // Create a message for the user
-    const message = new Message({
+    await Message.create({
       username: account.username,
       content: `Your grade was updated from ${oldGrade} to ${grade} by moataz.`,
       date: new Date(),
       time: new Date().toLocaleTimeString(),
     });
-    await message.save();
 
     // Return success response
     res.send({ message: 'Grade updated successfully', account });
@@ -388,7 +412,9 @@ router.post('/users/view-balance', async (req, res) => {
 
     // Find account by username or phone number
     const account = await Account.findOne({
-      $or: [{ username: trimmedUsername }, { phoneNumber }],
+      where: {
+        [Sequelize.Op.or]: [{ username: trimmedUsername }, { phoneNumber }],
+      },
     });
 
     if (!account) {
@@ -416,7 +442,7 @@ router.post('/users/update-password', async (req, res) => {
     const trimmedUsername = username.trim();
 
     // Find the user by username
-    const user = await User.findOne({ username: trimmedUsername });
+    const user = await User.findOne({ where: { username: trimmedUsername } });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -453,7 +479,7 @@ router.post('/users/admin/update-password', async (req, res) => {
     const trimmedUsername = username.trim();
 
     // Find the user by username
-    const user = await User.findOne({ username: trimmedUsername });
+    const user = await User.findOne({ where: { username: trimmedUsername } });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -480,14 +506,14 @@ router.post('/user-data', async (req, res) => {
 
   try {
     // Find the session by key
-    const session = await Session.findOne({ key: sessionKey });
+    const session = await Session.findOne({ where: { key: sessionKey } });
 
     if (!session) {
       return res.status(404).json({ error: 'Invalid session key.' });
     }
 
     // Find the user by username from the session
-    const user = await User.findOne({ username: session.username });
+    const user = await User.findOne({ where: { username: session.username } });
 
     if (!user) {
       return res.status(404).json({ error: 'User not found.' });
@@ -511,15 +537,17 @@ router.post('/users/messages', validateRequest, async (req, res) => {
     const { key } = req.body; // Session key to identify the user
 
     // Validate the session key
-    const session = await Session.findOne({ key });
+    const session = await Session.findOne({ where: { key } });
     if (!session) {
       return res.status(401).send({ error: 'Invalid session key' });
     }
 
     // Fetch the latest 10 messages for the user
-    const messages = await Message.find({ username: session.username })
-      .sort({ date: -1, time: -1 }) // Sort by date and time in descending order
-      .limit(10); // Limit to 10 messages
+    const messages = await Message.findAll({
+      where: { username: session.username },
+      order: [['date', 'DESC'], ['time', 'DESC']], // Sort by date and time in descending order
+      limit: 10, // Limit to 10 messages
+    });
 
     // Return the messages
     res.send({ messages });
@@ -535,7 +563,7 @@ router.post('/validate-session', validateRequest, async (req, res) => {
     const { key } = req.body;
 
     // Check if the session key exists in the database
-    const session = await Session.findOne({ key });
+    const session = await Session.findOne({ where: { key } });
 
     if (session) {
       // If the session key is valid, return a success response
@@ -565,7 +593,9 @@ router.post('/users/search', validateRequest, async (req, res) => {
 
     // Find the user by username or phone number
     const user = await User.findOne({
-      $or: [{ username: trimmedUsername }, { phoneNumber }],
+      where: {
+        [Sequelize.Op.or]: [{ username: trimmedUsername }, { phoneNumber }],
+      },
     });
 
     if (!user) {
@@ -573,7 +603,7 @@ router.post('/users/search', validateRequest, async (req, res) => {
     }
 
     // Return user data excluding the password
-    const userResponse = { ...user.toObject() };
+    const userResponse = { ...user.toJSON() };
     delete userResponse.password; // Remove the password field
     res.send({ user: userResponse });
   } catch (error) {
@@ -596,7 +626,7 @@ router.post('/users/admin/update-credentials', validateRequest, async (req, res)
     const trimmedUsername = username.trim();
 
     // Find the user by username
-    const user = await User.findOne({ username: trimmedUsername });
+    const user = await User.findOne({ where: { username: trimmedUsername } });
     if (!user) {
       return res.status(404).send({ error: 'User not found' });
     }
@@ -607,7 +637,7 @@ router.post('/users/admin/update-credentials', validateRequest, async (req, res)
       const trimmedNewUsername = newUsername.trim();
 
       // Check if the new username already exists
-      const existingUser = await User.findOne({ username: trimmedNewUsername });
+      const existingUser = await User.findOne({ where: { username: trimmedNewUsername } });
       if (existingUser) {
         return res.status(400).send({ error: 'Username already exists' });
       }
@@ -618,7 +648,7 @@ router.post('/users/admin/update-credentials', validateRequest, async (req, res)
     await user.save();
 
     // Return the updated user data (excluding password)
-    const userResponse = { ...user.toObject() };
+    const userResponse = { ...user.toJSON() };
     delete userResponse.password; // Remove the password field
     res.send({ message: 'Username updated successfully', user: userResponse });
   } catch (error) {
@@ -641,7 +671,7 @@ router.post('/users/admin/update-display-name', validateRequest, async (req, res
     const trimmedUsername = username.trim();
 
     // Find the user by username
-    const user = await User.findOne({ username: trimmedUsername });
+    const user = await User.findOne({ where: { username: trimmedUsername } });
     if (!user) {
       return res.status(404).send({ error: 'User not found' });
     }
@@ -656,7 +686,7 @@ router.post('/users/admin/update-display-name', validateRequest, async (req, res
     await user.save();
 
     // Return the updated user data (excluding password)
-    const userResponse = { ...user.toObject() };
+    const userResponse = { ...user.toJSON() };
     delete userResponse.password; // Remove the password field
     res.send({ message: 'Display name updated successfully', user: userResponse });
   } catch (error) {
@@ -679,7 +709,7 @@ router.post('/users/admin/update-phone-number', validateRequest, async (req, res
     const trimmedUsername = username.trim();
 
     // Find the user by username
-    const user = await User.findOne({ username: trimmedUsername });
+    const user = await User.findOne({ where: { username: trimmedUsername } });
     if (!user) {
       return res.status(404).send({ error: 'User not found' });
     }
@@ -690,7 +720,7 @@ router.post('/users/admin/update-phone-number', validateRequest, async (req, res
     }
 
     // Check if the new phone number already exists
-    const existingUserByPhoneNumber = await User.findOne({ phoneNumber: newPhoneNumber });
+    const existingUserByPhoneNumber = await User.findOne({ where: { phoneNumber: newPhoneNumber } });
     if (existingUserByPhoneNumber) {
       return res.status(400).send({ error: 'Phone number already exists' });
     }
@@ -700,7 +730,7 @@ router.post('/users/admin/update-phone-number', validateRequest, async (req, res
     await user.save();
 
     // Return the updated user data (excluding password)
-    const userResponse = { ...user.toObject() };
+    const userResponse = { ...user.toJSON() };
     delete userResponse.password; // Remove the password field
     res.send({ message: 'Phone number updated successfully', user: userResponse });
   } catch (error) {

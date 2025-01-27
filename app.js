@@ -10,11 +10,6 @@ const cors = require('cors'); // Import the cors package
 var app = express();
 
 // MongoDB connection
-const mongoURI = 'mongodb+srv://moataz:moataz666@cluster1.bypno.mongodb.net/'; // Replace with your MongoDB URI
-mongoose
-  .connect(mongoURI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => console.error('MongoDB connection error:', err));
 
 // List of allowed origins
 const allowedOrigins = [
